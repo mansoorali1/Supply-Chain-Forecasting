@@ -1,0 +1,84 @@
+# params.yaml
+# Single source of truth for all project parameters.
+# Every script reads from here. Nothing is hardcoded.
+
+data:
+  raw_file: "data/raw/DataCoSupplyChainDataset.csv"
+  processed_file: "data/processed/weekly_demand.parquet"
+  features_file: "data/features/features.parquet"
+  valid_order_statuses:
+    - "COMPLETE"
+    - "CLOSED"
+    - "PENDING"
+    - "PENDING_PAYMENT"
+    - "PROCESSING"
+  exclude_statuses:
+    - "CANCELED"
+    - "SUSPECTED_FRAUD"
+  aggregation_frequency: "W"      # W = weekly
+  min_weeks_history: 52           # SKUs with less than this are excluded
+  outlier_iqr_multiplier: 3.0     # cap at Q3 + 3*IQR per SKU
+
+splits:
+  test_size: 0.15                 # last 15% of time range
+  validation_size: 0.15           # 15% before test
+  walk_forward_initial: 52        # weeks in first training window
+  walk_forward_step: 4            # weeks to step forward each fold
+
+features:
+  lag_weeks: [1, 2, 4, 8, 13, 26, 52]
+  rolling_windows: [4, 8, 13, 26]
+  include_calendar: true
+  include_holidays: true
+
+sarima:
+  p_values: [0, 1, 2]
+  d_values: [0, 1]
+  q_values: [0, 1, 2]
+  seasonal_P: [0, 1]
+  seasonal_D: [1]
+  seasonal_Q: [0, 1]
+  seasonal_period: 52
+  information_criterion: "aic"
+  prediction_interval_alpha: 0.20   # gives 80% interval
+
+prophet:
+  changepoint_prior_scale: [0.001, 0.01, 0.05, 0.1, 0.5]
+  seasonality_prior_scale: [0.01, 0.1, 1.0, 10.0]
+  seasonality_mode: ["additive", "multiplicative"]
+  yearly_seasonality: true
+  weekly_seasonality: false         # data is weekly aggregated already
+  interval_width: 0.80              # 80% prediction interval
+
+lstm:
+  lookback_weeks: 26
+  hidden_units: [64, 32]
+  dropout_rate: 0.2
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 100
+  early_stopping_patience: 10
+  mc_dropout_samples: 100           # forward passes for uncertainty
+  min_weeks_required: 104           # LSTM needs 2 years minimum
+
+optimization:
+  service_level_target: 0.95
+  holding_cost_rate: 0.25           # 25% of unit price per year
+  stockout_cost_multiplier: 2.0     # stockout costs 2x unit price
+  lead_time_percentile: 0.90        # conservative lead time estimate
+
+evaluation:
+  coverage_tolerance: 0.03          # acceptable deviation from nominal coverage
+  minimum_mase_threshold: 1.0       # must beat naive seasonal baseline
+  primary_metric: "smape"           # metric used for model selection
+
+monitoring:
+  drift_detection_method: "ks"      # kolmogorov-smirnov test
+  drift_significance_level: 0.05
+  performance_degradation_threshold: 0.20   # 20% increase in RMSE triggers retrain
+  monitoring_window_weeks: 8
+
+mlflow:
+  experiment_name: "supply_chain_forecasting"
+  tracking_uri: "mlruns"
+  registered_model_name: "demand_forecaster"
